@@ -602,17 +602,15 @@ async function openPanel(ch){
   document.getElementById('panel').style.display='block';
   document.getElementById('overlay').style.display='block';
 
-  const html=await loadCharData(ch.id);
-  if(html){
-    document.getElementById('pc').innerHTML=html;
-  } else {
-    // fallback to static data
-    let fb=`<span class="badge ${ch.badge}">${ch.badgeText}</span><ul>`;
-    ch.tasks.forEach(t=>fb+=`<li>${t}</li>`);
-    fb+=`</ul>`;
-    if(ch.note) fb+=`<div class="note">${ch.note}</div>`;
-    document.getElementById('pc').innerHTML=fb;
-  }
+  const dynHtml=await loadCharData(ch.id);
+
+  // Tasks always shown
+  let tasksHtml=`<div style="margin-top:10px;color:#ffd700;font-size:10px;letter-spacing:1px">ЗАДАЧИ</div><ul>`;
+  ch.tasks.forEach(t=>tasksHtml+=`<li>${t}</li>`);
+  tasksHtml+=`</ul>`;
+  if(ch.note) tasksHtml+=`<div class="note">${ch.note}</div>`;
+
+  document.getElementById('pc').innerHTML=(dynHtml||`<span class="badge ${ch.badge}">${ch.badgeText}</span>`)+tasksHtml;
 }
 
 function closePanel(){
