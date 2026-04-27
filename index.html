@@ -494,16 +494,127 @@ function handleTap(e){
 canvas.addEventListener('click', handleTap);
 canvas.addEventListener('touchend', e=>{ e.preventDefault(); handleTap(e); }, {passive:false});
 
-function openPanel(ch){
+// ── DYNAMIC DATA LOADING ──
+async function fetchJSON(path){
+  try{ const r=await fetch(path); return r.ok ? await r.json() : null; }
+  catch{ return null; }
+}
+
+const BASE='./household-data/';
+
+async function loadCharData(id){
+  switch(id){
+
+    case 'butler': {
+      const fam=await fetchJSON(BASE+'family-profile.json');
+      if(!fam) return null;
+      const members=fam.family?.members||[];
+      const pets=fam.family?.pets||[];
+      let html=`<span class="badge ok">На посту</span>`;
+      html+=`<b style="color:#ffd700">Семья:</b><ul>`;
+      members.forEach(m=>{
+        const age=m.age_months ? `${m.age_months} мес.` : `${m.age} лет`;
+        html+=`<li>${m.name} (${m.role}, ${age})</li>`;
+      });
+      pets.forEach(p=>html+=`<li>${p.name} (${p.breed}, ${p.age} г.)</li>`);
+      html+=`</ul>`;
+      html+=`<div class="note">Координирует Повара, Уборщицу и Завхоза. Утренний дайджест ежедневно.</div>`;
+      return html;
+    }
+
+    case 'chef': {
+      const [prefs, menu, shop]=await Promise.all([
+        fetchJSON(BASE+'kitchen/food-preferences.json'),
+        fetchJSON(BASE+'kitchen/weekly-menu.json'),
+        fetchJSON(BASE+'kitchen/shopping-list-food.json'),
+      ]);
+      if(!prefs) return null;
+      const budget=prefs.household?.weekly_budget_rub;
+      const cuisines=(prefs.household?.preferred_cuisines||[]).join(', ');
+      const dishes=(prefs.favorite_dishes||[]).slice(0,4).join(', ');
+      const menuStatus=menu?.status==='not_planned'?'⏳ Меню не составлено':'✅ Меню готово';
+      const mira=prefs.members?.find(m=>m.id==='mira');
+      let html=`<span class="badge ok">Готов</span>`;
+      html+=`<ul>`;
+      html+=`<li>💰 Бюджет: ${budget ? budget.toLocaleString('ru')+'₽/нед' : 'не указан'}</li>`;
+      html+=`<li>🍽 ${menuStatus}</li>`;
+      html+=`<li>🌍 ${cuisines||'—'}</li>`;
+      html+=`<li>❤️ ${dishes||'—'}</li>`;
+      html+=`</ul>`;
+      if(mira) html+=`<div class="note">👶 Мира: ${(mira.preferences?.more||[]).join(', ')} — больше. Без соли, сахара, острого.</div>`;
+      return html;
+    }
+
+    case 'cleaner': {
+      const [home, sched]=await Promise.all([
+        fetchJSON(BASE+'cleaning/home-profile.json'),
+        fetchJSON(BASE+'cleaning/cleaning-schedule.json'),
+      ]);
+      if(!home) return null;
+      const pains=(home.pain_points||[]);
+      const day=home.cleaning_preferences?.preferred_days?.[0]||'не указан';
+      const daily=(sched?.daily||[]).slice(0,3);
+      let html=`<span class="badge ok">Готова</span>`;
+      html+=`<ul>`;
+      html+=`<li>📅 Уборка: ${day}</li>`;
+      daily.forEach(t=>html+=`<li>✓ ${t}</li>`);
+      html+=`</ul>`;
+      if(pains.length) html+=`<div class="note">⚠️ ${pains.slice(0,2).join('; ')}</div>`;
+      return html;
+    }
+
+    case 'supply': {
+      const inv=await fetchJSON(BASE+'supplies/inventory.json');
+      if(!inv) return null;
+      const pet=inv.categories?.pet_supplies||[];
+      const hyg=inv.categories?.hygiene||[];
+      const alerts=pet.filter(i=>i.alert);
+      const pending=inv.pending_check||[];
+      let html=`<span class="badge ${alerts.length?'warn':'ok'}">${alerts.length?'⚠ Внимание':'Готов'}</span>`;
+      html+=`<ul>`;
+      alerts.forEach(i=>html+=`<li>🚨 ${i.name}: ${i.quantity}</li>`);
+      hyg.slice(0,3).forEach(i=>html+=`<li>✓ ${i.name}: ${i.quantity||i.status}</li>`);
+      html+=`</ul>`;
+      if(pending.length) html+=`<div class="note">📋 Уточнить: ${pending.length} пункт(а)</div>`;
+      return html;
+    }
+
+    case 'pug': {
+      const [fam, inv]=await Promise.all([
+        fetchJSON(BASE+'family-profile.json'),
+        fetchJSON(BASE+'supplies/inventory.json'),
+      ]);
+      const pet=fam?.family?.pets?.[0];
+      const food=(inv?.categories?.pet_supplies||[]).find(i=>i.animal==='Луи');
+      let html=`<span class="badge ok">Бегает везде</span>`;
+      if(pet) html+=`<ul><li>🐾 ${pet.breed}, ${pet.age} года</li><li>🏠 Живёт дома постоянно</li><li>🛏 Лежанка есть</li></ul>`;
+      if(food) html+=`<div class="note ${food.alert?'warn':''}">🍖 ${food.name}: ${food.quantity}${food.alert?' ⚠️':''}</div>`;
+      return html;
+    }
+
+    default: return null;
+  }
+}
+
+async function openPanel(ch){
   document.getElementById('pt').textContent=ch.name;
-  let html=`<span class="badge ${ch.badge}">${ch.badgeText}</span><ul>`;
-  for(const t of ch.tasks) html+=`<li>${t}</li>`;
-  html+=`</ul>`;
-  if(ch.note) html+=`<div class="note">${ch.note}</div>`;
-  document.getElementById('pc').innerHTML=html;
+  document.getElementById('pc').innerHTML='<div style="color:#555;text-align:center;padding:16px">Загрузка...</div>';
   document.getElementById('panel').style.display='block';
   document.getElementById('overlay').style.display='block';
+
+  const html=await loadCharData(ch.id);
+  if(html){
+    document.getElementById('pc').innerHTML=html;
+  } else {
+    // fallback to static data
+    let fb=`<span class="badge ${ch.badge}">${ch.badgeText}</span><ul>`;
+    ch.tasks.forEach(t=>fb+=`<li>${t}</li>`);
+    fb+=`</ul>`;
+    if(ch.note) fb+=`<div class="note">${ch.note}</div>`;
+    document.getElementById('pc').innerHTML=fb;
+  }
 }
+
 function closePanel(){
   document.getElementById('panel').style.display='none';
   document.getElementById('overlay').style.display='none';

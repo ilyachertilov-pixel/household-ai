@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "created": "24.04.2026",
+  "updated": "24.04.2026",
+  "family": {
+    "size": 3,
+    "members": [
+      {
+        "id": "ilya",
+        "name": "Илья",
+        "role": "папа",
+        "age": 39
+      },
+      {
+        "id": "diana",
+        "name": "Диана",
+        "role": "мама",
+        "age": 29
+      },
+      {
+        "id": "mira",
+        "name": "Мира",
+        "role": "дочь",
+        "age_months": 18,
+        "note": "1,5 года — детское питание, прикорм"
+      }
+    ],
+    "pets": [
+      {
+        "id": "loui",
+        "name": "Луи",
+        "type": "собака",
+        "breed": "мопс",
+        "age": 2
+      }
+    ]
+  },
+  "status": "onboarding_in_progress"
+}
