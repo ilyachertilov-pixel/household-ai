@@ -62,6 +62,7 @@ canvas {
 ul { padding-left:18px; }
 li { margin:3px 0; color:#aaa; }
 .note { margin-top:10px; font-size:11px; color:#555; border-top:1px solid #1a1a3a; padding-top:8px; }
+.section-label { color:#ffd700; font-size:9px; letter-spacing:2px; margin:10px 0 4px; }
 </style>
 </head>
 <body>
@@ -506,76 +507,88 @@ async function loadCharData(id){
   switch(id){
 
     case 'butler': {
-      const fam=await fetchJSON(BASE+'family-profile.json');
-      if(!fam) return null;
-      const members=fam.family?.members||[];
-      const pets=fam.family?.pets||[];
-      let html=`<span class="badge ok">На посту</span>`;
-      html+=`<b style="color:#ffd700">Семья:</b><ul>`;
-      members.forEach(m=>{
-        const age=m.age_months ? `${m.age_months} мес.` : `${m.age} лет`;
-        html+=`<li>${m.name} (${m.role}, ${age})</li>`;
-      });
+      const [fam, tasks]=await Promise.all([
+        fetchJSON(BASE+'family-profile.json'),
+        fetchJSON(BASE+'agents/butler-tasks.json'),
+      ]);
+      const members=fam?.family?.members||[];
+      const pets=fam?.family?.pets||[];
+      const pending=(tasks?.pending||[]);
+      const hasUrgent=pending.some(t=>t.priority==='срочный');
+      let html=`<span class="badge ${hasUrgent?'warn':'ok'}">${hasUrgent?'⚠ Срочные задачи':'На посту'}</span>`;
+      html+=`<div class="section-label">СЕМЬЯ</div><ul>`;
+      members.forEach(m=>{ const age=m.age_months?`${m.age_months} мес.`:`${m.age} лет`; html+=`<li>${m.name} (${m.role}, ${age})</li>`; });
       pets.forEach(p=>html+=`<li>${p.name} (${p.breed}, ${p.age} г.)</li>`);
       html+=`</ul>`;
-      html+=`<div class="note">Координирует Повара, Уборщицу и Завхоза. Утренний дайджест ежедневно.</div>`;
+      if(pending.length){
+        html+=`<div class="section-label">В ОЧЕРЕДИ (${pending.length})</div><ul>`;
+        pending.forEach(t=>html+=`<li>${t.priority==='срочный'?'🚨':t.priority==='высокий'?'🔴':'🔵'} ${t.title}</li>`);
+        html+=`</ul>`;
+      }
       return html;
     }
 
     case 'chef': {
-      const [prefs, menu, shop]=await Promise.all([
+      const [prefs, menu, tasks]=await Promise.all([
         fetchJSON(BASE+'kitchen/food-preferences.json'),
         fetchJSON(BASE+'kitchen/weekly-menu.json'),
-        fetchJSON(BASE+'kitchen/shopping-list-food.json'),
+        fetchJSON(BASE+'agents/chef-tasks.json'),
       ]);
-      if(!prefs) return null;
-      const budget=prefs.household?.weekly_budget_rub;
-      const cuisines=(prefs.household?.preferred_cuisines||[]).join(', ');
-      const dishes=(prefs.favorite_dishes||[]).slice(0,4).join(', ');
-      const menuStatus=menu?.status==='not_planned'?'⏳ Меню не составлено':'✅ Меню готово';
-      const mira=prefs.members?.find(m=>m.id==='mira');
-      let html=`<span class="badge ok">Готов</span>`;
-      html+=`<ul>`;
-      html+=`<li>💰 Бюджет: ${budget ? budget.toLocaleString('ru')+'₽/нед' : 'не указан'}</li>`;
-      html+=`<li>🍽 ${menuStatus}</li>`;
-      html+=`<li>🌍 ${cuisines||'—'}</li>`;
-      html+=`<li>❤️ ${dishes||'—'}</li>`;
+      const budget=prefs?.household?.weekly_budget_rub;
+      const menuStatus=menu?.status==='not_planned'?'⏳ Не составлено':'✅ Готово';
+      const pending=(tasks?.pending||[]);
+      const hasUrgent=pending.some(t=>t.priority==='срочный'||t.priority==='высокий');
+      let html=`<span class="badge ${hasUrgent?'warn':'ok'}">${hasUrgent?'Есть задачи':'Готов'}</span>`;
+      html+=`<div class="section-label">СТАТУС</div><ul>`;
+      html+=`<li>💰 Бюджет: ${budget?budget.toLocaleString('ru')+'₽/нед':'не указан'}</li>`;
+      html+=`<li>📅 Меню: ${menuStatus}</li>`;
       html+=`</ul>`;
-      if(mira) html+=`<div class="note">👶 Мира: ${(mira.preferences?.more||[]).join(', ')} — больше. Без соли, сахара, острого.</div>`;
+      if(pending.length){
+        html+=`<div class="section-label">ЗАДАЧИ (${pending.length})</div><ul>`;
+        pending.forEach(t=>html+=`<li>${t.priority==='срочный'?'🚨':t.priority==='высокий'?'🔴':'🔵'} ${t.title}${t.due?' — до '+t.due:''}</li>`);
+        html+=`</ul>`;
+      }
       return html;
     }
 
     case 'cleaner': {
-      const [home, sched]=await Promise.all([
+      const [home, tasks]=await Promise.all([
         fetchJSON(BASE+'cleaning/home-profile.json'),
-        fetchJSON(BASE+'cleaning/cleaning-schedule.json'),
+        fetchJSON(BASE+'agents/cleaner-tasks.json'),
       ]);
-      if(!home) return null;
-      const pains=(home.pain_points||[]);
-      const day=home.cleaning_preferences?.preferred_days?.[0]||'не указан';
-      const daily=(sched?.daily||[]).slice(0,3);
-      let html=`<span class="badge ok">Готова</span>`;
-      html+=`<ul>`;
-      html+=`<li>📅 Уборка: ${day}</li>`;
-      daily.forEach(t=>html+=`<li>✓ ${t}</li>`);
+      const day=home?.cleaning_preferences?.preferred_days?.[0]||'пн';
+      const pending=(tasks?.pending||[]);
+      const hasUrgent=pending.some(t=>t.priority==='срочный'||t.priority==='высокий');
+      let html=`<span class="badge ${hasUrgent?'warn':'ok'}">${hasUrgent?'Есть задачи':'Готова'}</span>`;
+      html+=`<div class="section-label">СТАТУС</div><ul>`;
+      html+=`<li>📅 День уборки: ${day}</li>`;
       html+=`</ul>`;
-      if(pains.length) html+=`<div class="note">⚠️ ${pains.slice(0,2).join('; ')}</div>`;
+      if(pending.length){
+        html+=`<div class="section-label">ЗАДАЧИ (${pending.length})</div>`;
+        pending.forEach(t=>{
+          html+=`<ul><li>${t.priority==='высокий'?'🔴':'🔵'} ${t.title}</li>`;
+          if(t.checklist) t.checklist.slice(0,3).forEach(c=>html+=`<li style="padding-left:12px;color:#888">▸ ${c}</li>`);
+          html+=`</ul>`;
+        });
+      }
       return html;
     }
 
     case 'supply': {
-      const inv=await fetchJSON(BASE+'supplies/inventory.json');
-      if(!inv) return null;
-      const pet=inv.categories?.pet_supplies||[];
-      const hyg=inv.categories?.hygiene||[];
-      const alerts=pet.filter(i=>i.alert);
-      const pending=inv.pending_check||[];
-      let html=`<span class="badge ${alerts.length?'warn':'ok'}">${alerts.length?'⚠ Внимание':'Готов'}</span>`;
-      html+=`<ul>`;
-      alerts.forEach(i=>html+=`<li>🚨 ${i.name}: ${i.quantity}</li>`);
-      hyg.slice(0,3).forEach(i=>html+=`<li>✓ ${i.name}: ${i.quantity||i.status}</li>`);
-      html+=`</ul>`;
-      if(pending.length) html+=`<div class="note">📋 Уточнить: ${pending.length} пункт(а)</div>`;
+      const [inv, tasks]=await Promise.all([
+        fetchJSON(BASE+'supplies/inventory.json'),
+        fetchJSON(BASE+'agents/supply-tasks.json'),
+      ]);
+      const pending=(tasks?.pending||[]);
+      const urgent=pending.filter(t=>t.priority==='срочный');
+      let html=`<span class="badge ${urgent.length?'warn':'ok'}">${urgent.length?'⚠ Срочно':'Готов'}</span>`;
+      if(pending.length){
+        html+=`<div class="section-label">ЗАДАЧИ (${pending.length})</div><ul>`;
+        pending.forEach(t=>html+=`<li>${t.priority==='срочный'?'🚨':t.priority==='высокий'?'🔴':'🔵'} ${t.title}${t.due?' — до '+t.due:''}</li>${t.details?`<li style="padding-left:12px;color:#888;font-size:11px">${t.details}</li>`:''}`);
+        html+=`</ul>`;
+      }
+      const petFood=(inv?.categories?.pet_supplies||[]).find(i=>i.animal==='Луи');
+      if(petFood) html+=`<div class="note">🐾 Корм Луи: ${petFood.quantity}${petFood.alert?' ⚠️':''}</div>`;
       return html;
     }
 
@@ -587,8 +600,8 @@ async function loadCharData(id){
       const pet=fam?.family?.pets?.[0];
       const food=(inv?.categories?.pet_supplies||[]).find(i=>i.animal==='Луи');
       let html=`<span class="badge ok">Бегает везде</span>`;
-      if(pet) html+=`<ul><li>🐾 ${pet.breed}, ${pet.age} года</li><li>🏠 Живёт дома постоянно</li><li>🛏 Лежанка есть</li></ul>`;
-      if(food) html+=`<div class="note ${food.alert?'warn':''}">🍖 ${food.name}: ${food.quantity}${food.alert?' ⚠️':''}</div>`;
+      if(pet) html+=`<ul><li>🐾 ${pet.breed}, ${pet.age} года</li><li>🏠 Живёт дома постоянно</li><li>🛏 Лежанка в спальне</li></ul>`;
+      if(food) html+=`<div class="note">🍖 ${food.name}: ${food.quantity}${food.alert?' ⚠️ Купить срочно!':''}</div>`;
       return html;
     }
 
