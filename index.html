@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>🏠 Умная семья</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#0a0a18;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  font-family:'Courier New',monospace;
+  user-select:none;
+}
+h1 { color:#ffd700; font-size:13px; letter-spacing:6px; margin-bottom:10px; text-shadow:0 0 20px #ffd70055; }
+canvas { image-rendering:pixelated; image-rendering:crisp-edges; cursor:pointer; display:block; }
+.hint { color:#2a2a4a; font-size:10px; letter-spacing:3px; margin-top:8px; }
+#overlay { display:none; position:fixed; inset:0; background:#00000077; z-index:10; }
+#panel {
+  display:none; position:fixed; z-index:20;
+  top:50%; left:50%; transform:translate(-50%,-50%);
+  background:#0d0d24; border:2px solid #ffd700;
+  min-width:260px; max-width:320px;
+  padding:18px 20px; color:#ccc; font-size:13px; line-height:1.8;
+}
+#panel h2 { color:#ffd700; font-size:15px; margin-bottom:8px; padding-right:20px; }
+.close { position:absolute; top:10px; right:14px; cursor:pointer; color:#555; font-size:18px; }
+.close:hover { color:#ffd700; }
+.badge { display:inline-block; font-size:10px; padding:2px 8px; margin-bottom:10px; }
+.ok   { background:#1a4a20; color:#44ff88; }
+.warn { background:#4a2800; color:#ff9944; }
+ul { padding-left:18px; }
+li { margin:2px 0; color:#aaa; }
+.note { margin-top:10px; font-size:11px; color:#555; border-top:1px solid #1a1a3a; padding-top:8px; }
+</style>
+</head>
+<body>
+<h1>★ УМНАЯ СЕМЬЯ ★</h1>
+<canvas id="c" width="960" height="480"></canvas>
+<p class="hint">НАЖМИТЕ НА ПЕРСОНАЖА</p>
+<div id="overlay" onclick="closePanel()"></div>
+<div id="panel">
+  <span class="close" onclick="closePanel()">✕</span>
+  <h2 id="pt"></h2><div id="pc"></div>
+</div>
+<script>
+'use strict';
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+const W=960, H=480;
+
+// ── ROOM LAYOUT (top-down floor plan) ──
+const RM = {
+  kl: { x:10,  y:10,  w:540, h:460 }, // kitchen + living (open plan)
+  bd: { x:560, y:10,  w:240, h:460 }, // bedroom
+  bt: { x:810, y:10,  w:140, h:220 }, // bathroom
+  wd: { x:810, y:240, w:140, h:230 }, // wardrobe
+};
+const WCLR = '#2a1e14'; // wall color
+
+// ── FLOOR TEXTURES ──
+function drawFloor(x, y, w, h, base, type) {
+  ctx.fillStyle = base;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+  ctx.lineWidth = 1;
+  if (type === 'tile') {
+    // ceramic tiles grid
+    const T = 24;
+    for (let tx = x; tx < x+w; tx += T) { ctx.beginPath(); ctx.moveTo(tx,y); ctx.lineTo(tx,y+h); ctx.stroke(); }
+    for (let ty = y; ty < y+h; ty += T) { ctx.beginPath(); ctx.moveTo(x,ty); ctx.lineTo(x+w,ty); ctx.stroke(); }
+  } else if (type === 'plank') {
+    // wood planks
+    const T = 16;
+    for (let ty = y; ty < y+h; ty += T) { ctx.beginPath(); ctx.moveTo(x,ty); ctx.lineTo(x+w,ty); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(0,0,0,0.04)';
+    for (let tx = x+40; tx < x+w; tx += 80) { ctx.beginPath(); ctx.moveTo(tx,y); ctx.lineTo(tx,y+h); ctx.stroke(); }
+  } else if (type === 'carpet') {
+    // subtle carpet texture
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    const T = 8;
+    for (let tx = x; tx < x+w; tx += T) { ctx.beginPath(); ctx.moveTo(tx,y); ctx.lineTo(tx,y+h); ctx.stroke(); }
+    for (let ty = y; ty < y+h; ty += T) { ctx.beginPath(); ctx.moveTo(x,ty); ctx.lineTo(x+w,ty); ctx.stroke(); }
+  }
+}
+
+// ── FURNITURE (top-down bird's eye) ──
+function drawFurniture() {
+  const r = RM;
+
+  // ── KITCHEN (left half of kl) ──
+  // Counter L-shape
+  ctx.fillStyle = '#7a5a38'; ctx.fillRect(r.kl.x+10, r.kl.y+10, 200, 44); // top counter
+  ctx.fillRect(r.kl.x+10, r.kl.y+10, 44, 180); // left counter
+  ctx.fillStyle = '#9a8060'; ctx.fillRect(r.kl.x+10, r.kl.y+10, 200, 8); // countertop edge
+  ctx.fillRect(r.kl.x+10, r.kl.y+10, 8, 180);
+  // Stove (on top counter)
+  ctx.fillStyle = '#444'; ctx.fillRect(r.kl.x+50, r.kl.y+14, 60, 32);
+  ctx.fillStyle = '#cc3300';
+  ctx.beginPath(); ctx.arc(r.kl.x+65,  r.kl.y+22, 7, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(r.kl.x+95,  r.kl.y+22, 7, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(r.kl.x+65,  r.kl.y+38, 7, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(r.kl.x+95,  r.kl.y+38, 7, 0, Math.PI*2); ctx.fill();
+  // Sink (in left counter)
+  ctx.fillStyle = '#88aab0'; ctx.fillRect(r.kl.x+14, r.kl.y+60, 28, 22);
+  ctx.fillStyle = '#6a8a90'; ctx.fillRect(r.kl.x+16, r.kl.y+62, 24, 18);
+  // Fridge
+  ctx.fillStyle = '#c0c0c0'; ctx.fillRect(r.kl.x+168, r.kl.y+58, 40, 50);
+  ctx.fillStyle = '#aaaaaa'; ctx.fillRect(r.kl.x+170, r.kl.y+60, 36, 22);
+  ctx.fillRect(r.kl.x+170, r.kl.y+84, 36, 22);
+  ctx.fillStyle = '#888'; ctx.fillRect(r.kl.x+200, r.kl.y+68, 4, 8); ctx.fillRect(r.kl.x+200, r.kl.y+90, 4, 8);
+  // Kitchen table
+  ctx.fillStyle = '#9a7040'; ctx.fillRect(r.kl.x+60, r.kl.y+200, 140, 80);
+  ctx.fillStyle = '#7a5020'; ctx.fillRect(r.kl.x+62, r.kl.y+202, 8, 8); ctx.fillRect(r.kl.x+186, r.kl.y+202, 8, 8);
+  ctx.fillRect(r.kl.x+62, r.kl.y+268, 8, 8); ctx.fillRect(r.kl.x+186, r.kl.y+268, 8, 8); // legs
+  // Chairs around table
+  ctx.fillStyle = '#8a6030';
+  ctx.fillRect(r.kl.x+80,  r.kl.y+184, 30, 14); // top
+  ctx.fillRect(r.kl.x+150, r.kl.y+184, 30, 14);
+  ctx.fillRect(r.kl.x+80,  r.kl.y+282, 30, 14); // bottom
+  ctx.fillRect(r.kl.x+150, r.kl.y+282, 30, 14);
+  ctx.fillRect(r.kl.x+44,  r.kl.y+220, 14, 30); // left
+  ctx.fillRect(r.kl.x+202, r.kl.y+220, 14, 30); // right
+
+  // ── LIVING ROOM (right half of kl) ──
+  // Sofa (L-shape, against right wall of kl zone)
+  ctx.fillStyle = '#5a3a8a'; ctx.fillRect(r.kl.x+320, r.kl.y+30, 200, 70);  // main sofa
+  ctx.fillRect(r.kl.x+490, r.kl.y+30, 40, 160);  // side arm
+  ctx.fillStyle = '#6a4a9a';
+  ctx.fillRect(r.kl.x+320, r.kl.y+30, 200, 10); // back
+  ctx.fillRect(r.kl.x+490, r.kl.y+30, 10, 160);
+  // Cushions
+  ctx.fillStyle = '#7a5aaa';
+  ctx.fillRect(r.kl.x+335, r.kl.y+40, 50, 42);
+  ctx.fillRect(r.kl.x+395, r.kl.y+40, 50, 42);
+  ctx.fillRect(r.kl.x+455, r.kl.y+40, 28, 42);
+  // Coffee table
+  ctx.fillStyle = '#8a6030'; ctx.fillRect(r.kl.x+340, r.kl.y+120, 110, 60);
+  ctx.fillStyle = '#6a4010'; ctx.fillRect(r.kl.x+342, r.kl.y+122, 8, 8); ctx.fillRect(r.kl.x+440, r.kl.y+122, 8, 8);
+  ctx.fillRect(r.kl.x+342, r.kl.y+170, 8, 8); ctx.fillRect(r.kl.x+440, r.kl.y+170, 8, 8);
+  // TV unit
+  ctx.fillStyle = '#222'; ctx.fillRect(r.kl.x+280, r.kl.y+10, 36, 70);
+  ctx.fillStyle = '#334455'; ctx.fillRect(r.kl.x+282, r.kl.y+12, 32, 66);
+  // Plant (big)
+  ctx.fillStyle = '#3a6a1a'; ctx.beginPath(); ctx.arc(r.kl.x+295, r.kl.y+390, 28, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#2a5a0a'; ctx.beginPath(); ctx.arc(r.kl.x+295, r.kl.y+390, 20, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#4a7a2a'; ctx.beginPath(); ctx.arc(r.kl.x+295, r.kl.y+388, 12, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#7a5a30'; ctx.fillRect(r.kl.x+288, r.kl.y+414, 16, 36); // pot
+  // Rug
+  ctx.fillStyle = 'rgba(100,60,140,0.3)'; ctx.fillRect(r.kl.x+310, r.kl.y+100, 200, 120);
+  ctx.strokeStyle = 'rgba(140,100,180,0.5)'; ctx.lineWidth=2;
+  ctx.strokeRect(r.kl.x+316, r.kl.y+106, 188, 108);
+
+  // ── BEDROOM ──
+  // Bed (double, against top wall)
+  ctx.fillStyle = '#5c3010'; ctx.fillRect(r.bd.x+30, r.bd.y+10, 180, 130); // frame
+  ctx.fillStyle = '#3a1a00'; ctx.fillRect(r.bd.x+30, r.bd.y+10, 180, 14); // headboard
+  ctx.fillStyle = '#e8d8c8'; ctx.fillRect(r.bd.x+32, r.bd.y+24, 176, 114); // mattress
+  // Pillows
+  ctx.fillStyle = '#c8b0a0'; ctx.fillRect(r.bd.x+40, r.bd.y+28, 70, 30);
+  ctx.fillRect(r.bd.x+120, r.bd.y+28, 70, 30);
+  // Duvet
+  ctx.fillStyle = '#d8c0b0'; ctx.fillRect(r.bd.x+32, r.bd.y+58, 176, 78);
+  ctx.fillStyle = '#c0a890'; ctx.fillRect(r.bd.x+32, r.bd.y+58, 176, 4); // fold line
+  // Nightstand left
+  ctx.fillStyle = '#7a4a1a'; ctx.fillRect(r.bd.x+10, r.bd.y+24, 18, 26);
+  ctx.fillStyle = '#daa520'; ctx.beginPath(); ctx.arc(r.bd.x+19, r.bd.y+26, 5, 0, Math.PI*2); ctx.fill(); // lamp
+  // Nightstand right
+  ctx.fillStyle = '#7a4a1a'; ctx.fillRect(r.bd.x+212, r.bd.y+24, 18, 26);
+  // Wardrobe/closet in bedroom
+  ctx.fillStyle = '#6a4a20'; ctx.fillRect(r.bd.x+10, r.bd.y+200, 220, 60);
+  ctx.fillStyle = '#4a2a00'; ctx.fillRect(r.bd.x+114, r.bd.y+200, 4, 60); // divider
+  ctx.fillStyle = '#8a6a40';
+  ctx.fillRect(r.bd.x+60, r.bd.y+225, 6, 10); ctx.fillRect(r.bd.x+170, r.bd.y+225, 6, 10); // handles
+  // Desk
+  ctx.fillStyle = '#9a7040'; ctx.fillRect(r.bd.x+10, r.bd.y+320, 140, 60);
+  ctx.fillStyle = '#7a5020'; ctx.fillRect(r.bd.x+12, r.bd.y+322, 8, 8); ctx.fillRect(r.bd.x+138, r.bd.y+322, 8, 8);
+  // Chair at desk
+  ctx.fillStyle = '#8a5a30'; ctx.fillRect(r.bd.x+50, r.bd.y+382, 40, 30);
+  ctx.fillRect(r.bd.x+50, r.bd.y+382, 40, 8);
+
+  // ── BATHROOM ──
+  // Shower (top-left corner)
+  ctx.fillStyle = '#a0b8c8'; ctx.fillRect(r.bt.x+8, r.bt.y+8, 72, 72);
+  ctx.fillStyle = '#8a9fb0'; ctx.fillRect(r.bt.x+10, r.bt.y+10, 68, 68);
+  ctx.strokeStyle = '#7a8fa0'; ctx.lineWidth=1;
+  ctx.strokeRect(r.bt.x+10, r.bt.y+10, 68, 68);
+  ctx.fillStyle = '#5a7080'; ctx.beginPath(); ctx.arc(r.bt.x+44, r.bt.y+44, 8, 0, Math.PI*2); ctx.fill(); // drain
+  // Sink
+  ctx.fillStyle = '#ddd'; ctx.fillRect(r.bt.x+8, r.bt.y+92, 60, 46);
+  ctx.fillStyle = '#ccc'; ctx.fillRect(r.bt.x+12, r.bt.y+96, 52, 38);
+  ctx.fillStyle = '#aaa'; ctx.beginPath(); ctx.arc(r.bt.x+38, r.bt.y+115, 6, 0, Math.PI*2); ctx.fill(); // drain
+  ctx.fillStyle = '#bbb'; ctx.fillRect(r.bt.x+34, r.bt.y+92, 8, 8); // faucet
+  // Toilet
+  ctx.fillStyle = '#eee'; ctx.fillRect(r.bt.x+20, r.bt.y+150, 68, 62);
+  ctx.fillStyle = '#ddd'; ctx.fillRect(r.bt.x+20, r.bt.y+150, 68, 16); // tank
+  ctx.fillStyle = '#f5f5f5';
+  ctx.beginPath(); ctx.ellipse(r.bt.x+54, r.bt.y+185, 26, 20, 0, 0, Math.PI*2); ctx.fill(); // bowl
+
+  // ── WARDROBE ──
+  // Hanging rail
+  ctx.fillStyle = '#bbb'; ctx.fillRect(r.wd.x+8, r.wd.y+8, 124, 4);
+  ctx.fillRect(r.wd.x+8,  r.wd.y+8, 4, 20); ctx.fillRect(r.wd.x+128, r.wd.y+8, 4, 20);
+  // Clothes hanging (viewed from above — small colorful rects)
+  const cc=['#c03030','#3050c0','#30aa30','#c0aa10','#a030a0','#c06010','#306080'];
+  for(let i=0;i<7;i++){
+    ctx.fillStyle=cc[i];
+    ctx.fillRect(r.wd.x+12+i*17, r.wd.y+12, 14, 30);
+    ctx.fillStyle='rgba(0,0,0,0.2)';
+    ctx.fillRect(r.wd.x+17+i*17, r.wd.y+12, 4, 6); // hanger
+  }
+  // Shelves
+  ctx.fillStyle = '#7a5a30';
+  ctx.fillRect(r.wd.x+8, r.wd.y+60, 124, 6);
+  ctx.fillRect(r.wd.x+8, r.wd.y+110, 124, 6);
+  ctx.fillRect(r.wd.x+8, r.wd.y+160, 124, 6);
+  // Items on shelves
+  ctx.fillStyle='#c88040'; ctx.fillRect(r.wd.x+14, r.wd.y+68, 24, 18);
+  ctx.fillStyle='#4080c0'; ctx.fillRect(r.wd.x+42, r.wd.y+68, 20, 18);
+  ctx.fillStyle='#c0c0c0'; ctx.fillRect(r.wd.x+66, r.wd.y+68, 30, 18);
+  ctx.fillStyle='#80c040'; ctx.fillRect(r.wd.x+14, r.wd.y+118, 28, 18);
+  ctx.fillStyle='#c04080'; ctx.fillRect(r.wd.x+46, r.wd.y+118, 24, 18);
+}
+
+// ── DRAW MAP ──
+function drawMap() {
+  ctx.fillStyle = WCLR;
+  ctx.fillRect(0, 0, W, H);
+
+  // floors
+  drawFloor(RM.kl.x, RM.kl.y, RM.kl.w/2, RM.kl.h, '#d4b88a', 'tile');    // kitchen half
+  drawFloor(RM.kl.x+RM.kl.w/2, RM.kl.y, RM.kl.w/2, RM.kl.h, '#c4a0a8', 'carpet'); // living half
+  drawFloor(RM.bd.x, RM.bd.y, RM.bd.w, RM.bd.h, '#b8a0c0', 'plank');      // bedroom
+  drawFloor(RM.bt.x, RM.bt.y, RM.bt.w, RM.bt.h, '#a8b8c8', 'tile');       // bathroom
+  drawFloor(RM.wd.x, RM.wd.y, RM.wd.w, RM.wd.h, '#c4a87a', 'plank');      // wardrobe
+
+  // walls (outer)
+  ctx.strokeStyle = WCLR; ctx.lineWidth = 10;
+  ctx.strokeRect(5, 5, W-10, H-10);
+
+  // internal walls (thick dark lines between rooms)
+  ctx.fillStyle = WCLR;
+  // between kl and bedroom
+  ctx.fillRect(RM.kl.x+RM.kl.w, RM.kl.y, 10, H);
+  // between bedroom and bath/ward
+  ctx.fillRect(RM.bd.x+RM.bd.w, RM.bt.y, 10, H);
+  // between bathroom and wardrobe
+  ctx.fillRect(RM.bt.x, RM.bt.y+RM.bt.h, RM.bt.w+10, 10);
+
+  // door openings (erase wall sections)
+  // kitchen → bedroom door
+  ctx.fillStyle = '#d4b88a'; ctx.fillRect(RM.kl.x+RM.kl.w, RM.kl.y+200, 10, 60);
+  // bedroom → bathroom door
+  ctx.fillStyle = '#b8a0c0'; ctx.fillRect(RM.bd.x+RM.bd.w, RM.bt.y+60, 10, 50);
+  // bedroom → wardrobe door
+  ctx.fillStyle = '#b8a0c0'; ctx.fillRect(RM.bd.x+RM.bd.w, RM.wd.y+60, 10, 50);
+
+  // room labels
+  ctx.font = "bold 11px 'Courier New'";
+  ctx.textAlign = 'center';
+  [
+    ['КУХНЯ',        RM.kl.x+130, RM.kl.y+455],
+    ['ГОСТИНАЯ',     RM.kl.x+400, RM.kl.y+455],
+    ['СПАЛЬНЯ',      RM.bd.x+120, RM.bd.y+455],
+    ['САНУЗЕЛ',      RM.bt.x+70,  RM.bt.y+212],
+    ['ГАРДЕРОБНАЯ',  RM.wd.x+70,  RM.wd.y+222],
+  ].forEach(([label, x, y]) => {
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillText(label, x+1, y+1);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillText(label, x, y);
+  });
+}
+
+// ── CHARACTER DRAWING (top-down RPG chibi style) ──
+const SK = '#f4c2a1';
+
+function shadow(cx, cy) {
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(cx, cy+2, 12, 5, 0, 0, Math.PI*2); ctx.fill();
+}
+
+function drawButler(cx, cy, frame, dir) {
+  const b = frame===0 ? 0 : -2;
+  shadow(cx, cy+18);
+  // Legs
+  ctx.fillStyle = '#1a2070';
+  if(dir===1){ ctx.fillRect(cx-7,cy+10+b,5,8); ctx.fillRect(cx+2,cy+12+b,5,6); }
+  else        { ctx.fillRect(cx-7,cy+12+b,5,6); ctx.fillRect(cx+2,cy+10+b,5,8); }
+  // Shoes
+  ctx.fillStyle='#111';
+  ctx.fillRect(cx-8,cy+17+b,6,3); ctx.fillRect(cx+2,cy+17+b,6,3);
+  // Body
+  ctx.fillStyle='#1a2070'; ctx.beginPath(); ctx.roundRect(cx-10,cy,20,12,3); ctx.fill();
+  ctx.fillStyle='#f0f0f0'; ctx.fillRect(cx-3,cy+1,6,10); // shirt
+  ctx.fillStyle='#cc1010'; ctx.fillRect(cx-2,cy+2,2,4); ctx.fillRect(cx+0,cy+4,2,1); ctx.fillRect(cx+2,cy+2,2,4); // bow tie
+  // Head
+  ctx.fillStyle=SK; ctx.beginPath(); ctx.arc(cx, cy-7+b, 10, 0, Math.PI*2); ctx.fill();
+  // Eyes
+  ctx.fillStyle='#222'; ctx.fillRect(cx-5,cy-9+b,3,3); ctx.fillRect(cx+2,cy-9+b,3,3);
+  ctx.fillStyle='#fff'; ctx.fillRect(cx-5,cy-9+b,1,1); ctx.fillRect(cx+2,cy-9+b,1,1);
+  // Mouth
+  ctx.fillStyle='#c07060'; ctx.fillRect(cx-3,cy-4+b,6,2);
+  // Top hat
+  ctx.fillStyle='#111';
+  ctx.beginPath(); ctx.roundRect(cx-6,cy-22+b,12,14,1); ctx.fill(); // hat body
+  ctx.fillRect(cx-9,cy-10+b,18,3); // brim
+  ctx.fillStyle='#cc1010'; ctx.fillRect(cx-6,cy-12+b,12,2); // hat band
+}
+
+function drawChef(cx, cy, frame, dir) {
+  const b = frame===0 ? 0 : -2;
+  shadow(cx, cy+18);
+  // Legs
+  ctx.fillStyle='#f0f0f0';
+  if(dir===1){ ctx.fillRect(cx-7,cy+10+b,5,8); ctx.fillRect(cx+2,cy+12+b,5,6); }
+  else        { ctx.fillRect(cx-7,cy+12+b,5,6); ctx.fillRect(cx+2,cy+10+b,5,8); }
+  ctx.fillStyle='#555'; ctx.fillRect(cx-8,cy+17+b,6,3); ctx.fillRect(cx+2,cy+17+b,6,3);
+  // Body
+  ctx.fillStyle='#f0f0f0'; ctx.beginPath(); ctx.roundRect(cx-10,cy,20,12,3); ctx.fill();
+  // Apron strings
+  ctx.fillStyle='#e0e0e0'; ctx.fillRect(cx-6,cy,12,12);
+  ctx.fillStyle='#ccc'; ctx.fillRect(cx-1,cy,2,12); // center crease
+  // Head
+  ctx.fillStyle=SK; ctx.beginPath(); ctx.arc(cx, cy-7+b, 10, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='#222'; ctx.fillRect(cx-5,cy-9+b,3,3); ctx.fillRect(cx+2,cy-9+b,3,3);
+  ctx.fillStyle='#fff'; ctx.fillRect(cx-5,cy-9+b,1,1); ctx.fillRect(cx+2,cy-9+b,1,1);
+  ctx.fillStyle='#c07060'; ctx.fillRect(cx-3,cy-4+b,6,2);
+  // Mustache
+  ctx.fillStyle='#6a4020'; ctx.fillRect(cx-4,cy-5+b,8,2);
+  // Toque (chef hat - tall)
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.roundRect(cx-7,cy-32+b,14,24,5); ctx.fill();
+  ctx.fillStyle='#eee'; ctx.fillRect(cx-8,cy-10+b,16,4); // brim
+  ctx.fillStyle='rgba(0,0,0,0.05)'; // shadow on hat
+  ctx.beginPath(); ctx.arc(cx+3,cy-22+b,4,0,Math.PI*2); ctx.fill();
+}
+
+function drawCleaner(cx, cy, frame, dir) {
+  const b = frame===0 ? 0 : -2;
+  shadow(cx, cy+18);
+  // Legs (dress)
+  ctx.fillStyle='#3060c0';
+  if(dir===1){ ctx.fillRect(cx-7,cy+10+b,5,8); ctx.fillRect(cx+2,cy+12+b,5,6); }
+  else        { ctx.fillRect(cx-7,cy+12+b,5,6); ctx.fillRect(cx+2,cy+10+b,5,8); }
+  ctx.fillStyle='#222'; ctx.fillRect(cx-8,cy+17+b,6,3); ctx.fillRect(cx+2,cy+17+b,6,3);
+  // Dress body
+  ctx.fillStyle='#3060c0'; ctx.beginPath(); ctx.roundRect(cx-11,cy,22,12,3); ctx.fill();
+  // Apron
+  ctx.fillStyle='#d8d8f0'; ctx.fillRect(cx-6,cy+1,12,11);
+  // Head
+  ctx.fillStyle=SK; ctx.beginPath(); ctx.arc(cx, cy-7+b, 10, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='#222'; ctx.fillRect(cx-5,cy-9+b,3,3); ctx.fillRect(cx+2,cy-9+b,3,3);
+  ctx.fillStyle='#fff'; ctx.fillRect(cx-5,cy-9+b,1,1); ctx.fillRect(cx+2,cy-9+b,1,1);
+  ctx.fillStyle='#c07060'; ctx.fillRect(cx-3,cy-4+b,6,2);
+  // Blush
+  ctx.fillStyle='rgba(255,160,160,0.5)'; ctx.beginPath(); ctx.ellipse(cx-7,cy-5+b,3,2,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx+7,cy-5+b,3,2,0,0,Math.PI*2); ctx.fill();
+  // Hair bun (top-down: big brown circle)
+  ctx.fillStyle='#8b4513'; ctx.beginPath(); ctx.arc(cx, cy-16+b, 10, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='#6b3000'; ctx.beginPath(); ctx.arc(cx, cy-17+b, 6, 0, Math.PI*2); ctx.fill(); // bun
+  ctx.fillStyle='#9a5a20'; ctx.beginPath(); ctx.arc(cx, cy-17+b, 3, 0, Math.PI*2); ctx.fill(); // bun highlight
+  // Mop (stick)
+  ctx.strokeStyle='#8b6030'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(cx+10,cy-5+b); ctx.lineTo(cx+24,cy+18); ctx.stroke();
+  ctx.fillStyle='#aaa'; ctx.fillRect(cx+18,cy+16,10,6);
+}
+
+function drawSupply(cx, cy, frame, dir) {
+  const b = frame===0 ? 0 : -2;
+  shadow(cx, cy+18);
+  // Legs
+  ctx.fillStyle='#2d6a2d';
+  if(dir===1){ ctx.fillRect(cx-7,cy+10+b,5,8); ctx.fillRect(cx+2,cy+12+b,5,6); }
+  else        { ctx.fillRect(cx-7,cy+12+b,5,6); ctx.fillRect(cx+2,cy+10+b,5,8); }
+  ctx.fillStyle='#4a3000'; ctx.fillRect(cx-8,cy+17+b,6,4); ctx.fillRect(cx+2,cy+17+b,6,4);
+  // Overalls
+  ctx.fillStyle='#2d6a2d'; ctx.beginPath(); ctx.roundRect(cx-10,cy,20,12,3); ctx.fill();
+  ctx.fillStyle='#3a7a3a'; ctx.fillRect(cx-3,cy,6,6); // bib
+  ctx.fillStyle='#1a5a1a'; ctx.fillRect(cx+3,cy+2,5,5); // pocket
+  // Head
+  ctx.fillStyle=SK; ctx.beginPath(); ctx.arc(cx, cy-7+b, 10, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='#222'; ctx.fillRect(cx-5,cy-9+b,3,3); ctx.fillRect(cx+2,cy-9+b,3,3);
+  ctx.fillStyle='#fff'; ctx.fillRect(cx-5,cy-9+b,1,1); ctx.fillRect(cx+2,cy-9+b,1,1);
+  ctx.fillStyle='#c07060'; ctx.fillRect(cx-3,cy-4+b,6,2);
+  ctx.fillStyle='#444'; ctx.fillRect(cx-4,cy-6+b,8,1); // stubble
+  // Short dark hair
+  ctx.fillStyle='#1a1a1a'; ctx.beginPath(); ctx.arc(cx, cy-16+b, 10, Math.PI, Math.PI*2); ctx.fill();
+  ctx.fillRect(cx-10,cy-17+b,20,6);
+  // Clipboard
+  ctx.fillStyle='#c8a060'; ctx.fillRect(cx+10,cy-8+b,14,16);
+  ctx.fillStyle='#f5f5e0'; ctx.fillRect(cx+11,cy-7+b,12,14);
+  ctx.fillStyle='#8b6020'; ctx.fillRect(cx+15,cy-10+b,6,4); // clip
+  ctx.fillStyle='#aaa'; ctx.fillRect(cx+12,cy-5+b,10,1); ctx.fillRect(cx+12,cy-2+b,10,1); ctx.fillRect(cx+12,cy+1+b,8,1);
+}
+
+function drawPug(cx, cy, frame) {
+  const b = frame===0 ? 0 : -1;
+  // Shadow (smaller)
+  ctx.fillStyle='rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.ellipse(cx, cy+6, 14, 5, 0, 0, Math.PI*2); ctx.fill();
+  // Body (horizontal oval, black)
+  ctx.fillStyle='#1a1a1a'; ctx.beginPath(); ctx.ellipse(cx, cy+2+b, 14, 10, 0, 0, Math.PI*2); ctx.fill();
+  // Legs (4)
+  ctx.fillStyle='#111';
+  if(frame===0){
+    ctx.fillRect(cx-14,cy-2+b,5,7); ctx.fillRect(cx+9,cy-2+b,5,7);   // front legs
+    ctx.fillRect(cx-12,cy+4+b,5,7); ctx.fillRect(cx+7,cy+4+b,5,7);   // back legs
+  } else {
+    ctx.fillRect(cx-14,cy+1+b,5,7); ctx.fillRect(cx+9,cy+1+b,5,7);
+    ctx.fillRect(cx-12,cy-2+b,5,7); ctx.fillRect(cx+7,cy-2+b,5,7);
+  }
+  // Head (round, top-down: slightly above body)
+  ctx.fillStyle='#1a1a1a'; ctx.beginPath(); ctx.arc(cx, cy-7+b, 11, 0, Math.PI*2); ctx.fill();
+  // Mopс face (darker area)
+  ctx.fillStyle='#2a2a2a'; ctx.beginPath(); ctx.arc(cx, cy-6+b, 8, 0, Math.PI*2); ctx.fill();
+  // Eyes (big, shiny)
+  ctx.fillStyle='#333'; ctx.beginPath(); ctx.arc(cx-4,cy-8+b,3,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx+4,cy-8+b,3,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx-4,cy-9+b,1.5,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx+4,cy-9+b,1.5,0,Math.PI*2); ctx.fill();
+  // Nose
+  ctx.fillStyle='#000'; ctx.beginPath(); ctx.ellipse(cx,cy-4+b,3,2,0,0,Math.PI*2); ctx.fill();
+  // Ears
+  ctx.fillStyle='#111'; ctx.beginPath(); ctx.ellipse(cx-9,cy-10+b,4,5,-.3,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx+9,cy-10+b,4,5,.3,0,Math.PI*2); ctx.fill();
+  // Curly tail
+  ctx.strokeStyle='#222'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(cx+12,cy+4+b,5,Math.PI,0); ctx.stroke();
+}
+
+// ── CHARACTERS DATA ──
+const CHARS = [
+  { id:'butler',  name:'Дворецкий 🎩', draw:(cx,cy,f,d)=>drawButler(cx,cy,f,d),
+    x:380, y:240, spd:0.7, dir:1, zone:{x:10,y:10,w:940,h:460},
+    badge:'ok', badgeText:'На посту',
+    tasks:['Координация команды агентов','Утренний дайджест — каждый день','Недельный обзор — по воскресеньям','Маршрутизация запросов семьи'],
+    note:'⚠ Инвентаризация не завершена — уточнить с Завхозом' },
+  { id:'chef',    name:'Повар 👨‍🍳',    draw:(cx,cy,f,d)=>drawChef(cx,cy,f,d),
+    x:100, y:350, spd:0.5, dir:1, zone:{x:10,y:10,w:270,h:460},
+    badge:'ok', badgeText:'Готов',
+    tasks:['Меню на неделю — воскресенье 27.04.2026','Список продуктов на неделю','Детское меню для Миры (1,5 года)','Бюджет: 10 000 ₽ / неделя'],
+    note:'🍽 Любимые: плов, лазанья, Цезарь, паста, блинчики' },
+  { id:'cleaner', name:'Уборщица 🧹',  draw:(cx,cy,f,d)=>drawCleaner(cx,cy,f,d),
+    x:470, y:180, spd:0.55, dir:-1, zone:{x:10,y:10,w:800,h:460},
+    badge:'ok', badgeText:'Готова',
+    tasks:['Уборка — понедельник 28.04.2026','Ежедневно: крошки Миры + отпечатки на фасадах','Пылесос от шерсти Луи — приоритет','Смена постельного белья раз в неделю'],
+    note:'🐾 Шерсть мопса — главная боль' },
+  { id:'supply',  name:'Завхоз 📦',    draw:(cx,cy,f,d)=>drawSupply(cx,cy,f,d),
+    x:870, y:320, spd:0.45, dir:-1, zone:{x:560,y:10,w:390,h:460},
+    badge:'warn', badgeText:'⚠ Внимание',
+    tasks:['🚨 Корм Луи: ~1.75 кг — КУПИТЬ СРОЧНО','Инвентаризация: завершить сегодня 25.04','Аптечка — состав не уточнён','Пятница — плановая инвентаризация'],
+    note:'🛒 Royal Canin гипоаллергенный, упаковка 3.5 кг' },
+  { id:'pug',     name:'Луи 🐾',       draw:(cx,cy,f)=>drawPug(cx,cy,f),
+    x:240, y:140, spd:2.2, dir:1, zone:{x:10,y:10,w:940,h:460},
+    badge:'ok', badgeText:'Носится везде',
+    tasks:['Кормление 3 раза в день','Корм: Royal Canin гипоаллергенный','Прогулки по расписанию','Шерсть оставляет везде 😅'],
+    note:'🐶 Чёрный мопс, 2 года. Живёт дома. Лежанка есть.' },
+];
+
+// ── ANIMATION ──
+let tick=0, anim=0;
+// Each character gets its own wander target
+CHARS.forEach(ch => {
+  ch.tx = ch.x; ch.ty = ch.y;
+  ch.waitTimer = Math.floor(Math.random()*120);
+});
+
+function newTarget(ch) {
+  const z = ch.zone;
+  ch.tx = z.x + 20 + Math.random()*(z.w-40);
+  ch.ty = z.y + 20 + Math.random()*(z.h-40);
+  ch.waitTimer = 60 + Math.floor(Math.random()*180);
+}
+
+function update() {
+  tick++;
+  if(tick%20===0) anim^=1;
+
+  for(const ch of CHARS){
+    if(ch.waitTimer > 0){ ch.waitTimer--; continue; }
+    const dx = ch.tx - ch.x;
+    const dy = ch.ty - ch.y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    if(dist < 4){ newTarget(ch); continue; }
+    const spd = ch.id==='pug' ? ch.spd*1.8 : ch.spd;
+    ch.x += (dx/dist)*spd;
+    ch.y += (dy/dist)*spd;
+    ch.dir = dx > 0 ? 1 : -1;
+  }
+}
+
+function draw() {
+  drawMap();
+  drawFurniture();
+
+  // Draw chars sorted by Y (depth)
+  const sorted = [...CHARS].sort((a,b)=>a.y-b.y);
+  for(const ch of sorted){
+    ctx.save();
+    ch.draw(ch.x, ch.y, anim, ch.dir);
+    ctx.restore();
+    // Name tag
+    ctx.fillStyle='rgba(0,0,0,0.55)';
+    const tw = ctx.measureText(ch.name.split(' ')[0]).width + 8;
+    ctx.font="9px 'Courier New'";
+    const tw2 = ctx.measureText(ch.name.split(' ')[0]).width;
+    ctx.fillRect(ch.x - tw2/2 - 4, ch.y-32, tw2+8, 13);
+    ctx.fillStyle='#ffd700';
+    ctx.textAlign='center';
+    ctx.fillText(ch.name.split(' ')[0], ch.x, ch.y-22);
+  }
+}
+
+function loop(){ update(); draw(); requestAnimationFrame(loop); }
+loop();
+
+// ── CLICK ──
+canvas.addEventListener('click', e=>{
+  const rc=canvas.getBoundingClientRect();
+  const mx=(e.clientX-rc.left)*(W/rc.width);
+  const my=(e.clientY-rc.top)*(H/rc.height);
+  for(const ch of [...CHARS].reverse()){
+    if(Math.abs(mx-ch.x)<20 && Math.abs(my-ch.y)<30){
+      openPanel(ch); return;
+    }
+  }
+});
+
+function openPanel(ch){
+  document.getElementById('pt').textContent=ch.name;
+  let html=`<span class="badge ${ch.badge}">${ch.badgeText}</span><ul>`;
+  for(const t of ch.tasks) html+=`<li>${t}</li>`;
+  html+=`</ul>`;
+  if(ch.note) html+=`<div class="note">${ch.note}</div>`;
+  document.getElementById('pc').innerHTML=html;
+  document.getElementById('panel').style.display='block';
+  document.getElementById('overlay').style.display='block';
+}
+
+function closePanel(){
+  document.getElementById('panel').style.display='none';
+  document.getElementById('overlay').style.display='none';
+}
+</script>
+</body>
+</html>
