@@ -525,6 +525,12 @@ async function loadCharData(id){
         pending.forEach(t=>html+=`<li>${t.priority==='срочный'?'🚨':t.priority==='высокий'?'🔴':'🔵'} ${t.title}</li>`);
         html+=`</ul>`;
       }
+      const butDone=(tasks?.completed||[]);
+      if(butDone.length){
+        html+=`<div class="section-label">ВЫПОЛНЕНО</div><ul>`;
+        butDone.slice(-2).forEach(t=>html+=`<li>✅ ${t.title}</li>`);
+        html+=`</ul>`;
+      }
       return html;
     }
 
@@ -548,6 +554,12 @@ async function loadCharData(id){
         pending.forEach(t=>html+=`<li>${t.priority==='срочный'?'🚨':t.priority==='высокий'?'🔴':'🔵'} ${t.title}${t.due?' — до '+t.due:''}</li>`);
         html+=`</ul>`;
       }
+      const chefDone=(tasks?.completed||[]);
+      if(chefDone.length){
+        html+=`<div class="section-label">ВЫПОЛНЕНО</div><ul>`;
+        chefDone.slice(-3).forEach(t=>html+=`<li>✅ ${t.title}${t.completed_date?' ('+t.completed_date+')':''}</li>`);
+        html+=`</ul>`;
+      }
       return html;
     }
 
@@ -558,11 +570,10 @@ async function loadCharData(id){
       ]);
       const day=home?.cleaning_preferences?.preferred_days?.[0]||'пн';
       const pending=(tasks?.pending||[]);
+      const done=(tasks?.completed||[]);
       const hasUrgent=pending.some(t=>t.priority==='срочный'||t.priority==='высокий');
-      let html=`<span class="badge ${hasUrgent?'warn':'ok'}">${hasUrgent?'Есть задачи':'Готова'}</span>`;
-      html+=`<div class="section-label">СТАТУС</div><ul>`;
-      html+=`<li>📅 День уборки: ${day}</li>`;
-      html+=`</ul>`;
+      let html=`<span class="badge ${hasUrgent?'warn':pending.length?'warn':'ok'}">${pending.length?'Есть задачи':'Всё чисто ✨'}</span>`;
+      html+=`<div class="section-label">СТАТУС</div><ul><li>📅 День уборки: ${day}</li></ul>`;
       if(pending.length){
         html+=`<div class="section-label">ЗАДАЧИ (${pending.length})</div>`;
         pending.forEach(t=>{
@@ -570,6 +581,11 @@ async function loadCharData(id){
           if(t.checklist) t.checklist.slice(0,3).forEach(c=>html+=`<li style="padding-left:12px;color:#888">▸ ${c}</li>`);
           html+=`</ul>`;
         });
+      }
+      if(done.length){
+        html+=`<div class="section-label">ВЫПОЛНЕНО</div><ul>`;
+        done.slice(-3).forEach(t=>html+=`<li>✅ ${t.title}${t.completed_date?' ('+t.completed_date+')':''}</li>`);
+        html+=`</ul>`;
       }
       return html;
     }
@@ -589,6 +605,12 @@ async function loadCharData(id){
       }
       const petFood=(inv?.categories?.pet_supplies||[]).find(i=>i.animal==='Луи');
       if(petFood) html+=`<div class="note">🐾 Корм Луи: ${petFood.quantity}${petFood.alert?' ⚠️':''}</div>`;
+      const supDone=(tasks?.completed||[]);
+      if(supDone.length){
+        html+=`<div class="section-label">ВЫПОЛНЕНО</div><ul>`;
+        supDone.slice(-2).forEach(t=>html+=`<li>✅ ${t.title}</li>`);
+        html+=`</ul>`;
+      }
       return html;
     }
 
@@ -616,14 +638,7 @@ async function openPanel(ch){
   document.getElementById('overlay').style.display='block';
 
   const dynHtml=await loadCharData(ch.id);
-
-  // Tasks always shown
-  let tasksHtml=`<div style="margin-top:10px;color:#ffd700;font-size:10px;letter-spacing:1px">ЗАДАЧИ</div><ul>`;
-  ch.tasks.forEach(t=>tasksHtml+=`<li>${t}</li>`);
-  tasksHtml+=`</ul>`;
-  if(ch.note) tasksHtml+=`<div class="note">${ch.note}</div>`;
-
-  document.getElementById('pc').innerHTML=(dynHtml||`<span class="badge ${ch.badge}">${ch.badgeText}</span>`)+tasksHtml;
+  document.getElementById('pc').innerHTML=dynHtml||`<span class="badge ${ch.badge}">${ch.badgeText}</span><ul>${ch.tasks.map(t=>`<li>${t}</li>`).join('')}</ul>`;
 }
 
 function closePanel(){
