@@ -1,5 +1,59 @@
 {
   "version": "1.0",
-  "updated": "24.04.2026",
-  "items": {}
+  "updated": "28.04.2026",
+  "week": "28.04–04.05.2026",
+  "total_estimate": "~4 790 ₽",
+  "status": "pending_purchase",
+  "items": {
+    "meat": [
+      { "name": "Куриные бёдра/окорочка", "quantity": "2 кг", "price_est": 500 },
+      { "name": "Говядина или свинина", "quantity": "700 г", "price_est": 350, "note": "для запекания 01.05" },
+      { "name": "Фарш говяжий", "quantity": "700 г", "price_est": 350, "note": "котлеты + болоньезе" },
+      { "name": "Куриное филе", "quantity": "500 г", "price_est": 250, "note": "паста, Цезарь" }
+    ],
+    "dairy": [
+      { "name": "Яйца", "quantity": "20 шт", "price_est": 130 },
+      { "name": "Молоко 3,2%", "quantity": "2 л", "price_est": 130 },
+      { "name": "Сливки 20%", "quantity": "200 мл", "price_est": 80 },
+      { "name": "Сметана", "quantity": "400 г", "price_est": 100 },
+      { "name": "Твёрдый сыр", "quantity": "300 г", "price_est": 250 },
+      { "name": "Масло сливочное", "quantity": "200 г", "price_est": 150 }
+    ],
+    "cereals_pasta": [
+      { "name": "Рис", "quantity": "1 кг", "price_est": 100 },
+      { "name": "Гречка", "quantity": "1 кг", "price_est": 90 },
+      { "name": "Овсяные хлопья", "quantity": "500 г", "price_est": 60 },
+      { "name": "Паста", "quantity": "500 г", "price_est": 80 }
+    ],
+    "frozen": [
+      { "name": "Блинчики замороженные", "quantity": "2 уп", "price_est": 300 }
+    ],
+    "vegetables": [
+      { "name": "Помидоры", "quantity": "1,5 кг", "price_est": 200 },
+      { "name": "Огурцы", "quantity": "500 г", "price_est": 100 },
+      { "name": "Перец болгарский", "quantity": "4 шт", "price_est": 120 },
+      { "name": "Лук репчатый", "quantity": "1 кг", "price_est": 50 },
+      { "name": "Морковь", "quantity": "1 кг", "price_est": 50 },
+      { "name": "Кабачок", "quantity": "2 шт", "price_est": 120 },
+      { "name": "Картофель", "quantity": "2 кг", "price_est": 100 },
+      { "name": "Зелень (петрушка, укроп)", "quantity": "2 пучка", "price_est": 80 },
+      { "name": "Лимон", "quantity": "2 шт", "price_est": 60 },
+      { "name": "Чеснок", "quantity": "1 головка", "price_est": 30 }
+    ],
+    "grocery": [
+      { "name": "Масло растительное", "quantity": "1 л", "price_est": 150 },
+      { "name": "Томатная паста", "quantity": "1 банка", "price_est": 60 },
+      { "name": "Томаты консервированные", "quantity": "1 банка", "price_est": 100 },
+      { "name": "Маслины", "quantity": "1 банка", "price_est": 120 }
+    ],
+    "for_mira": [
+      { "name": "Детский кефир/йогурт без добавок", "quantity": "4 шт", "price_est": 200 },
+      { "name": "Яблоки", "quantity": "1 кг", "price_est": 100 },
+      { "name": "Груши", "quantity": "1 кг", "price_est": 120 }
+    ],
+    "other": [
+      { "name": "Сухарики для Цезаря", "quantity": "1 уп", "price_est": 60 },
+      { "name": "Соус Цезарь", "quantity": "1 бут", "price_est": 100 }
+    ]
+  }
 }
